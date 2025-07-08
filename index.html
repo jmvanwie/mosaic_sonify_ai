@@ -11,25 +11,15 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: transparent; /* Removed background color */
+            background-color: transparent;
         }
         .font-display {
             font-family: 'Lexend', sans-serif;
         }
-        /* Custom scrollbar for better aesthetics */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #2d3748;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #4a5568;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #718096;
-        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #2d3748; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
         .loader {
             border: 4px solid rgba(255, 255, 255, 0.3);
             border-top: 4px solid #ffffff;
@@ -42,19 +32,13 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* New animation for the status bar */
         @keyframes pulse-bg {
-            0%, 100% {
-                background-color: rgba(55, 65, 81, 0.7); /* bg-gray-700/70 */
-            }
-            50% {
-                background-color: rgba(75, 85, 99, 0.7); /* bg-gray-600/70 */
-            }
+            0%, 100% { background-color: rgba(55, 65, 81, 0.7); }
+            50% { background-color: rgba(75, 85, 99, 0.7); }
         }
         .status-loading {
             animation: pulse-bg 2s infinite;
         }
-        /* Custom color for selected button */
         .bg-custom-selected {
             background-color: #62929e;
         }
@@ -65,7 +49,6 @@
     <div class="container mx-auto p-4 md:p-6">
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-            <!-- Form Column -->
             <div class="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl shadow-2xl border border-gray-700/50">
                 <div class="space-y-4">
                     <div>
@@ -106,12 +89,10 @@
                 </div>
             </div>
 
-            <!-- Repository Column -->
             <div class="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl shadow-2xl border border-gray-700/50">
                 <h2 class="font-display text-2xl font-bold text-white border-b border-gray-700 pb-3 mb-4">Podcast Library</h2>
                 <div id="repository-list" class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                    <!-- Podcasts will be dynamically added here -->
-                     <div id="empty-state" class="text-center py-10">
+                    <div id="empty-state" class="text-center py-10">
                         <svg class="mx-auto h-12 w-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 6l12-3" />
                         </svg>
@@ -124,7 +105,6 @@
     </div>
     
     <script>
-    // Correct API URL pointing to your live Render server
         const RENDER_API_URL = "https://mosaic-sonify-ai.onrender.com"; 
 
         const generateBtn = document.getElementById('generate-btn');
@@ -178,12 +158,10 @@
         // Handle duration button clicks
         durationSelector.addEventListener('click', (e) => {
             if (e.target.classList.contains('duration-btn')) {
-                // Remove selected state from all buttons
                 durationSelector.querySelectorAll('.duration-btn').forEach(btn => {
                     btn.classList.remove('bg-custom-selected', 'selected');
                     btn.classList.add('bg-gray-700/80', 'hover:bg-gray-600/80');
                 });
-                // Add selected state to the clicked button
                 e.target.classList.add('bg-custom-selected', 'selected');
                 e.target.classList.remove('bg-gray-700/80', 'hover:bg-gray-600/80');
             }
@@ -200,7 +178,6 @@
                 return;
             }
 
-            // Disable button and show loading state
             generateBtn.disabled = true;
             generateBtn.innerHTML = '<div class="loader"></div><span class="ml-3">Generating... Please wait</span>';
             showStatus('Submitting job to the studio...', 'loading');
@@ -263,57 +240,53 @@
                 emptyState.style.display = 'none';
             }
 
+            // Main container for the card, now a vertical flex column
             const item = document.createElement('div');
-            item.className = 'bg-gray-700/50 p-4 rounded-lg flex items-center gap-4 transition-all duration-300 transform scale-95 opacity-0';
+            item.className = 'bg-gray-700/50 p-4 rounded-lg flex flex-col gap-4 transition-all duration-300 transform scale-95 opacity-0';
             
-            // --- START OF CHANGES ---
-
+            // Artwork container - now much larger
             const artworkContainer = document.createElement('div');
-            artworkContainer.className = 'w-16 h-16 bg-gray-800 rounded-md flex-shrink-0 flex items-center justify-center shadow-lg';
+            artworkContainer.className = 'w-full h-64 bg-gray-800 rounded-md shadow-lg'; // h-64 is significantly larger
 
-            // Check if artwork_url exists in the data from the backend
             if (data.artwork_url) {
-                // If it exists, create an image element
                 artworkContainer.innerHTML = `<img src="${data.artwork_url}" alt="Podcast artwork for ${data.topic}" class="w-full h-full object-cover rounded-md">`;
             } else {
-                // If not, use the default SVG icon
-                artworkContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>`;
+                // Default icon, now larger to fit the new container
+                artworkContainer.classList.add('flex', 'items-center', 'justify-center');
+                artworkContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>`;
             }
 
-            // --- END OF CHANGES ---
-
+            // Details container for title and audio player
             const details = document.createElement('div');
-            details.className = 'flex-grow min-w-0';
+            details.className = 'w-full';
 
             const title = document.createElement('p');
-            title.className = 'font-display font-semibold text-white truncate';
+            title.className = 'font-display font-semibold text-white text-lg text-center truncate'; // Centered text
             title.textContent = data.topic || 'Untitled Podcast';
 
             const audio = document.createElement('audio');
             audio.controls = true;
             audio.src = data.url; // Use 'url' which is the correct key for the podcast audio
-            audio.className = 'w-full mt-2';
+            audio.className = 'w-full mt-3'; // A little more space
 
             details.appendChild(title);
             details.appendChild(audio);
             
-            // Use the new artworkContainer
+            // Add the new elements to the main card item
             item.appendChild(artworkContainer); 
             item.appendChild(details);
             
             repositoryList.prepend(item);
-            
+
             setTimeout(() => {
                 item.classList.remove('scale-95', 'opacity-0');
             }, 50);
-    }
+        }
 
         function showStatus(message, type = 'loading') {
             statusDiv.style.display = 'block';
             statusDiv.textContent = message;
             statusDiv.className = 'mt-4 p-4 rounded-lg text-center text-base ';
-
-            // Clear previous animation classes
             statusDiv.classList.remove('status-loading');
 
             switch(type) {
@@ -332,10 +305,6 @@
             generateBtn.disabled = false;
             generateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>Generate Podcast`;
         }
-</script>
+    </script>
 </body>
 </html>
-
-
-
-
