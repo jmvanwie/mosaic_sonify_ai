@@ -35,31 +35,47 @@ bucket = None
 tts_client = None
 genai_model = None
 
+CREDENTIALS_PATH = "/etc/secrets/firebase_service_account.json"
+
 def initialize_services():
-    """Initializes all external services using environment variables."""
+    """Initializes all external services using a secret file."""
     global db, bucket, tts_client, genai_model
 
+    # Initialize credentials once from the secret file
+    try:
+        print(f"Loading credentials from secret file: {CREDENTIALS_PATH}")
+        cred = credentials.Certificate(CREDENTIALS_PATH)
+    except Exception as e:
+        print(f"FATAL: Could not load credentials from {CREDENTIALS_PATH}. Ensure the secret file is configured in Render. Error: {e}")
+        raise e
+
+    # Initialize Firebase
     if not firebase_admin._apps:
         try:
-            print("Attempting to initialize Firebase using Application Default Credentials...")
+            print("Initializing Firebase...")
             project_id = os.environ.get('GCP_PROJECT_ID')
-            firebase_admin.initialize_app(options={'projectId': project_id}) 
+            firebase_admin.initialize_app(cred, {
+                'projectId': project_id,
+                'storageBucket': os.environ.get('FIREBASE_STORAGE_BUCKET')
+            })
             db = firestore.client()
-            bucket = storage.bucket(os.environ.get('FIREBASE_STORAGE_BUCKET'))
+            bucket = storage.bucket() # Bucket is now available via the default app
             print("Successfully connected to Firebase.")
         except Exception as e:
             print(f"FATAL: Could not connect to Firebase: {e}")
             raise e
 
+    # Initialize Text-to-Speech
     if tts_client is None:
         try:
             print("Initializing Google Cloud Text-to-Speech client...")
-            tts_client = texttospeech.TextToSpeechClient()
+            tts_client = texttospeech.TextToSpeechClient(credentials=cred)
             print("Text-to-Speech client initialized.")
         except Exception as e:
             print(f"FATAL: Could not initialize TTS client: {e}")
             raise e
             
+    # Initialize Gemini
     if genai_model is None:
         try:
             print("Initializing Google Gemini model...")
@@ -72,7 +88,7 @@ def initialize_services():
         except Exception as e:
             print(f"FATAL: Could not initialize Gemini model: {e}")
             raise e
-
+        
 # --- Celery Configuration ---
 def make_celery(app):
     broker_url = os.environ.get('CELERY_BROKER_URL')
