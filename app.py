@@ -93,6 +93,31 @@ def initialize_services():
         except Exception as e:
             print(f"FATAL: Could not initialize Gemini model: {e}")
             raise e
+
+    # Initialize Text-to-Speech
+    if tts_client is None:
+        try:
+            print("Initializing Google Cloud Text-to-Speech client...")
+            # Use the general Google Cloud credential
+            tts_client = texttospeech.TextToSpeechClient(credentials=cred_gcp)
+            print("Text-to-Speech client initialized.")
+        except Exception as e:
+            print(f"FATAL: Could not initialize TTS client: {e}")
+            raise e
+            
+    # Initialize Gemini
+    if genai_model is None:
+        try:
+            print("Initializing Google Gemini model...")
+            gemini_api_key = os.environ.get('GEMINI_API_KEY')
+            if not gemini_api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set.")
+            genai.configure(api_key=gemini_api_key)
+            genai_model = genai.GenerativeModel('gemini-1.5-pro-latest')
+            print("Gemini model initialized.")
+        except Exception as e:
+            print(f"FATAL: Could not initialize Gemini model: {e}")
+            raise e
         
 # --- Celery Configuration ---
 def make_celery(app):
