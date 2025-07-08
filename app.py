@@ -285,6 +285,46 @@ def generate_artwork_for_topic(topic, job_id):
         print(f"WARNING: Artwork generation failed: {e}")
         return None
 
+def _finalize_job(job_id, collection_name, local_audio_path, storage_path, generated_script=None, local_artwork_path=None):
+    """Finalizes a job by uploading files and updating Firestore."""
+    print(f"Finalizing job {job_id}...")
+    
+    # 1. Upload Audio File
+    audio_blob = bucket.blob(storage_path)
+    print(f"Uploading {local_audio_path} to {storage_path}...")
+    audio_blob.upload_from_filename(local_audio_path)
+    audio_blob.make_public()
+    audio_url = audio_blob.public_url
+    print(f"Audio upload complete. Public URL: {audio_url}")
+    os.remove(local_audio_path)
+    
+    # Prepare the data for the database update
+    update_data = {
+        'status': 'complete', 
+        'url': audio_url, 
+        'completed_at': firestore.SERVER_TIMESTAMP
+    }
+    if generated_script:
+        update_data['generated_script'] = generated_script
+
+    # 2. Upload Artwork File (if it was created)
+    if local_artwork_path:
+        artwork_storage_path = f"podcasts/artwork/{os.path.basename(local_artwork_path)}"
+        artwork_blob = bucket.blob(artwork_storage_path)
+        print(f"Uploading {local_artwork_path} to {artwork_storage_path}...")
+        artwork_blob.upload_from_filename(local_artwork_path)
+        artwork_blob.make_public()
+        artwork_url = artwork_blob.public_url
+        print(f"Artwork upload complete. Public URL: {artwork_url}")
+        os.remove(local_artwork_path)
+        # Add the artwork URL to our database update
+        update_data['artwork_url'] = artwork_url
+
+    # 3. Update Firestore with all the new data
+    db.collection(collection_name).document(job_id).update(update_data)
+    print(f"Firestore document for job {job_id} updated to complete.")
+    return {"status": "Complete", "url": audio_url}
+
 # --- Celery Task Definitions ---
 @celery.task
 def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
