@@ -204,27 +204,86 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
     print(f"Audio content successfully written to file '{output_filepath}'")
     return True
 
-def _finalize_job(job_id, collection_name, local_file_path, storage_path, generated_script=None):
-    """Finalizes a job by uploading the file and updating Firestore."""
-    print(f"Finalizing job {job_id} in collection {collection_name}...")
-    blob = bucket.blob(storage_path)
+def _finalize_job(job_id, collection_name, local_audio_path, storage_path, generated_script=None, local_artwork_path=None):
+    """Finalizes a job by uploading files and updating Firestore."""
+    print(f"Finalizing job {job_id}...")
     
-    print(f"Uploading {local_file_path} to {storage_path}...")
-    blob.upload_from_filename(local_file_path)
-    blob.make_public()
-    public_url = blob.public_url
-    print(f"Upload complete. Public URL: {public_url}")
-
-    os.remove(local_file_path)
-    print(f"Removed temporary file: {local_file_path}")
-
-    update_data = {'status': 'complete', 'url': public_url, 'completed_at': firestore.SERVER_TIMESTAMP}
+    # 1. Upload Audio File
+    audio_blob = bucket.blob(storage_path)
+    print(f"Uploading {local_audio_path} to {storage_path}...")
+    audio_blob.upload_from_filename(local_audio_path)
+    audio_blob.make_public()
+    audio_url = audio_blob.public_url
+    print(f"Audio upload complete. Public URL: {audio_url}")
+    os.remove(local_audio_path)
+    
+    # Prepare the data for the database update
+    update_data = {
+        'status': 'complete', 
+        'url': audio_url, 
+        'completed_at': firestore.SERVER_TIMESTAMP
+    }
     if generated_script:
         update_data['generated_script'] = generated_script
 
+    # 2. Upload Artwork File (if it was created)
+    if local_artwork_path:
+        artwork_storage_path = f"podcasts/artwork/{os.path.basename(local_artwork_path)}"
+        artwork_blob = bucket.blob(artwork_storage_path)
+        print(f"Uploading {local_artwork_path} to {artwork_storage_path}...")
+        artwork_blob.upload_from_filename(local_artwork_path)
+        artwork_blob.make_public()
+        artwork_url = artwork_blob.public_url
+        print(f"Artwork upload complete. Public URL: {artwork_url}")
+        os.remove(local_artwork_path)
+        # Add the artwork URL to our database update
+        update_data['artwork_url'] = artwork_url
+
+    # 3. Update Firestore with all the new data
     db.collection(collection_name).document(job_id).update(update_data)
     print(f"Firestore document for job {job_id} updated to complete.")
-    return {"status": "Complete", "url": public_url}
+    return {"status": "Complete", "url": audio_url}
+
+def generate_artwork_for_topic(topic, job_id):
+    """Generates podcast cover art using an image model."""
+    print(f"Generating artwork for topic: {topic}")
+    try:
+        # This assumes you have the 'Vertex AI User' role on your service account
+        from google.cloud import aiplatform
+        # This line has been corrected
+        from google.cloud.aiplatform.gapic.preview import image_generation_service_client as igs_client
+
+        # Configure the image generation client
+        api_endpoint = "us-central1-aiplatform.googleapis.com"
+        client_options = {"api_endpoint": api_endpoint}
+        client = igs_client.ImageGenerationServiceClient(client_options=client_options)
+
+        prompt = (
+            f"Podcast cover art for a podcast about '{topic}'. "
+            f"Digital art, vibrant, modern, aesthetically pleasing, no text."
+        )
+
+        # Generate the image
+        response = client.generate_images(
+            parent=f"projects/{os.environ.get('GCP_PROJECT_ID')}/locations/us-central1",
+            prompt=prompt,
+            number_of_images=1
+        )
+
+        if not response.images:
+            raise Exception("Image generation returned no images.")
+
+        # Save the image to a temporary file
+        artwork_filepath = f"{job_id}_artwork.png"
+        image_bytes = response.images[0].image_bytes
+        with open(artwork_filepath, 'wb') as f:
+            f.write(image_bytes)
+        
+        print(f"Artwork successfully written to file '{artwork_filepath}'")
+        return artwork_filepath
+    except Exception as e:
+        print(f"WARNING: Artwork generation failed: {e}")
+        return None
 
 # --- Celery Task Definitions ---
 @celery.task
