@@ -28,7 +28,10 @@ origins = [
     "http://127.0.0.1:5500",
     re.compile(r"https://.*\.netlify\.app"), # Allow all netlify subdomains
 ]
+
 CORS(app, resources={r"/*": {"origins": origins}})
+
+initialize_services()
 
 # --- Service Initialization Globals ---
 db = None
