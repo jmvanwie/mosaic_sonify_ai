@@ -151,33 +151,51 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
     dialogue_parts = parse_script(script_text)
     if not dialogue_parts:
         raise ValueError("The script is empty or could not be parsed. Cannot generate audio.")
+    
     voice_map = {'Trystan': voice_names[0], 'Saylor': voice_names[1]}
     combined_audio = AudioSegment.empty()
-    for speaker_name, dialogue in dialogue_parts:
+    
+    print("---- STARTING AUDIO SYNTHESIS LOOP ----")
+    for i, (speaker_name, dialogue) in enumerate(dialogue_parts):
         dialogue = dialogue.strip()
-        if not dialogue: continue
+        print(f"\n[PART {i+1}/{len(dialogue_parts)}] Speaker: {speaker_name}")
+        print(f"[PART {i+1}] Dialogue to synthesize: '{dialogue}'")
+
+        if not dialogue: 
+            print(f"[PART {i+1}] SKIPPING: Dialogue is empty.")
+            continue
+
         voice_name = voice_map.get(speaker_name)
-        if not voice_name: continue
-        print(f"Synthesizing dialogue for {speaker_name} with voice {voice_name}...")
+        if not voice_name: 
+            print(f"[PART {i+1}] SKIPPING: Could not find voice for speaker.")
+            continue
+
         phonetic_dialogue = dialogue.replace("Saylor", "sailor")
         synthesis_input = texttospeech.SynthesisInput(text=phonetic_dialogue)
         voice_params = texttospeech.VoiceSelectionParams(
             language_code=voice_name.split('-')[0] + '-' + voice_name.split('-')[1],
             name=voice_name
         )
-        # FIX: Explicitly set the sample rate for high-fidelity voices
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
             sample_rate_hertz=24000
         )
+        
         response = tts_client.synthesize_speech(input=synthesis_input, voice=voice_params, audio_config=audio_config)
         
+        print(f"[PART {i+1}] TTS API returned audio content size: {len(response.audio_content)} bytes")
+
         if not response.audio_content:
-            print(f"WARNING: Text-to-Speech API returned empty audio for voice {voice_name}. Skipping this part.")
+            print(f"[PART {i+1}] WARNING: TTS API returned empty audio. Skipping this part.")
             continue
             
         audio_chunk = AudioSegment.from_file(io.BytesIO(response.audio_content), format="mp3")
+        print(f"[PART {i+1}] Pydub created audio chunk of duration: {len(audio_chunk)} ms")
+
         combined_audio += audio_chunk + AudioSegment.silent(duration=600)
+    
+    print("\n---- FINISHED AUDIO SYNTHESIS LOOP ----")
+    print(f"Total combined audio duration before export: {len(combined_audio)} ms")
 
     if len(combined_audio) == 0:
         raise ValueError("Audio generation resulted in an empty file. All TTS requests may have failed.")
