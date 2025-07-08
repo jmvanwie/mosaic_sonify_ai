@@ -16,22 +16,8 @@ import google.generativeai as genai
 from google.oauth2 import service_account
 import openai
 
-# --- App & CORS Configuration ---
+# --- App & Service Initialization ---
 app = Flask(__name__)
-
-origins = [
-    "https://vermillion-otter-bfe24a.netlify.app",
-    "https://statuesque-tiramisu-4b5936.netlify.app",
-    "https://coruscating-hotteok-a5fb56.netlify.app",
-    "https://www.mosaicdigital.ai",
-    "http://localhost:8000",
-    "http://127.0.0.1:5500",
-    re.compile(r"https://.*\.netlify\.app"), # Allow all netlify subdomains
-]
-
-CORS(app, resources={r"/*": {"origins": origins}})
-
-initialize_services()
 
 # --- Service Initialization Globals ---
 db = None
@@ -39,8 +25,10 @@ bucket = None
 tts_client = None
 genai_model = None
 
+# --- Credential Path ---
 CREDENTIALS_PATH = "/etc/secrets/firebase_service_account.json"
 
+# --- DEFINE THE INITIALIZATION FUNCTION FIRST ---
 def initialize_services():
     """Initializes all external services using a secret file."""
     global db, bucket, tts_client, genai_model
@@ -89,7 +77,23 @@ def initialize_services():
         except Exception as e:
             print(f"FATAL: Could not initialize Gemini model: {e}")
             raise e
-            
+
+# --- NOW, CALL THE INITIALIZATION FUNCTION ---
+initialize_services()
+
+# --- FINALLY, CONFIGURE CORS ---
+origins = [
+    "https://vermillion-otter-bfe24a.netlify.app",
+    "https://statuesque-tiramisu-4b5936.netlify.app",
+    "https://coruscating-hotteok-a5fb56.netlify.app",
+    "https://www.mosaicdigital.ai",
+    "http://localhost:8000",
+    "http://127.0.0.1:5500",
+    re.compile(r"https://.*\.netlify\.app"), # Allow all netlify subdomains
+]
+CORS(app, resources={r"/*": {"origins": origins}})
+
+
 # --- Celery Configuration ---
 def make_celery(app):
     broker_url = os.environ.get('CELERY_BROKER_URL')
@@ -109,6 +113,7 @@ def make_celery(app):
     return celery
 
 celery = make_celery(app)
+
 
 # --- Core Logic Functions ---
 def generate_script_from_idea(topic, context, duration):
@@ -184,13 +189,10 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
     print(f"Audio content successfully written to file '{output_filepath}'")
     return True
 
-# --- NEW, SIMPLER ARTWORK AND FINALIZE FUNCTIONS ---
-
 def generate_artwork_for_topic(topic):
     """Generates podcast cover art using OpenAI's DALL-E 3 model."""
     print(f"Generating artwork for topic '{topic}' using DALL-E 3...")
     try:
-        # The OpenAI client automatically uses the OPENAI_API_KEY environment variable
         client = openai.OpenAI()
         
         prompt = (
@@ -220,7 +222,6 @@ def _finalize_job(job_id, collection_name, local_audio_path, storage_path, gener
     """Finalizes a job by uploading the audio file and updating Firestore."""
     print(f"Finalizing job {job_id}...")
     
-    # 1. Upload Audio File
     audio_blob = bucket.blob(storage_path)
     print(f"Uploading {local_audio_path} to {storage_path}...")
     audio_blob.upload_from_filename(local_audio_path)
@@ -229,7 +230,6 @@ def _finalize_job(job_id, collection_name, local_audio_path, storage_path, gener
     print(f"Audio upload complete. Public URL: {audio_url}")
     os.remove(local_audio_path)
     
-    # 2. Prepare the data for the database update
     update_data = {
         'status': 'complete', 
         'url': audio_url, 
@@ -238,12 +238,12 @@ def _finalize_job(job_id, collection_name, local_audio_path, storage_path, gener
     if generated_script:
         update_data['generated_script'] = generated_script
     if artwork_url:
-        update_data['artwork_url'] = artwork_url # Add the artwork URL if we have it
+        update_data['artwork_url'] = artwork_url
 
-    # 3. Update Firestore
     db.collection(collection_name).document(job_id).update(update_data)
     print(f"Firestore document for job {job_id} updated to complete.")
     return {"status": "Complete", "url": audio_url}
+
 
 # --- Celery Task Definitions ---
 @celery.task
@@ -255,30 +255,22 @@ def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
     try:
         doc_ref.set({'topic': topic, 'context': context, 'source_type': 'idea', 'duration': duration, 'status': 'processing', 'created_at': firestore.SERVER_TIMESTAMP, 'voices': voices})
         
-        # 1. Generate the script
         original_script = generate_script_from_idea(topic, context, duration)
-        
-        # 2. Generate the artwork URL
         artwork_url = generate_artwork_for_topic(topic)
         
-        # 3. Generate the audio
         if not generate_podcast_audio(original_script, audio_filepath, voices): 
             raise Exception("Audio generation failed.")
             
-        # 4. Finalize the job
         return _finalize_job(
-            job_id, 
-            'podcasts', 
-            audio_filepath, 
-            f"podcasts/{audio_filepath}", 
-            generated_script=original_script, 
-            artwork_url=artwork_url
+            job_id, 'podcasts', audio_filepath, f"podcasts/{audio_filepath}", 
+            generated_script=original_script, artwork_url=artwork_url
         )
     except Exception as e:
         print(f"ERROR in podcast task {job_id}: {e}")
         doc_ref.update({'status': 'failed', 'error_message': str(e)})
         if os.path.exists(audio_filepath): os.remove(audio_filepath)
         return {"status": "Failed", "error": str(e)}
+
 
 # --- API Endpoints ---
 @app.route("/")
@@ -308,7 +300,6 @@ def get_podcast_status(job_id):
     
 @app.route("/debug-env")
 def debug_env():
-    # This will collect all environment variables the app can see
     env_vars = {key: value for key, value in os.environ.items()}
     return jsonify(env_vars)
 
