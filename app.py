@@ -302,6 +302,12 @@ def get_podcast_status(job_id):
         return jsonify(doc.to_dict()), 200
     except Exception as e:
         return jsonify({"error": f"An error occurred: {e}"}), 500
+    
+@app.route("/debug-env")
+def debug_env():
+    # This will collect all environment variables the app can see
+    env_vars = {key: value for key, value in os.environ.items()}
+    return jsonify(env_vars)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
