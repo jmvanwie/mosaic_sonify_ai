@@ -7,5 +7,4 @@ firebase-admin
 pydub
 google-cloud-texttospeech
 google-generativeai
-google-oauth2-service-account
 google-cloud-aiplatform
