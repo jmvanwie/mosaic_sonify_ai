@@ -1,0 +1,16 @@
+Flask==3.0.3
+Flask-CORS==4.0.1
+gunicorn==22.0.0
+
+# --- Background Tasks ---
+celery==5.4.0
+redis==5.0.7
+
+# --- File & Document Handling ---
+PyPDF2==3.0.1
+pydub==0.25.1
+
+# --- Google Cloud Services ---
+firebase-admin==6.5.0
+google-cloud-texttospeech==2.17.1
+google-generativeai==0.8.4
