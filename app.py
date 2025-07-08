@@ -1,9 +1,10 @@
-# app.py - Sonify Podcast Generator (Stable Version)
+# app.py - Sonify Podcast Generator (Final Version)
 
 import os
 import uuid
 import re
 import io
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from celery import Celery
@@ -13,12 +14,11 @@ from pydub import AudioSegment
 from google.cloud import texttospeech
 import google.generativeai as genai
 from google.oauth2 import service_account
+import openai
 
 # --- App & CORS Configuration ---
 app = Flask(__name__)
 
-# This list tells your backend that it's safe to accept requests
-# from these specific web addresses.
 origins = [
     "https://vermillion-otter-bfe24a.netlify.app",
     "https://statuesque-tiramisu-4b5936.netlify.app",
@@ -42,23 +42,19 @@ def initialize_services():
     """Initializes all external services using a secret file."""
     global db, bucket, tts_client, genai_model
 
-    # Create two different credential objects from the same file
     try:
         print(f"Loading credentials from secret file: {CREDENTIALS_PATH}")
-        # Credential for Firebase Admin SDK
         cred_firebase = credentials.Certificate(CREDENTIALS_PATH)
-        # Credential for other Google Cloud services (like TTS)
         cred_gcp = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
     except Exception as e:
         print(f"FATAL: Could not load credentials from {CREDENTIALS_PATH}. Error: {e}")
         raise e
 
-    # Initialize Firebase
     if not firebase_admin._apps:
         try:
             print("Initializing Firebase...")
             project_id = os.environ.get('GCP_PROJECT_ID')
-            firebase_admin.initialize_app(cred_firebase, { # Use the Firebase credential
+            firebase_admin.initialize_app(cred_firebase, {
                 'projectId': project_id,
                 'storageBucket': os.environ.get('FIREBASE_STORAGE_BUCKET')
             })
@@ -69,18 +65,15 @@ def initialize_services():
             print(f"FATAL: Could not connect to Firebase: {e}")
             raise e
 
-    # Initialize Text-to-Speech
     if tts_client is None:
         try:
             print("Initializing Google Cloud Text-to-Speech client...")
-            # Use the general Google Cloud credential
             tts_client = texttospeech.TextToSpeechClient(credentials=cred_gcp)
             print("Text-to-Speech client initialized.")
         except Exception as e:
             print(f"FATAL: Could not initialize TTS client: {e}")
             raise e
             
-    # Initialize Gemini
     if genai_model is None:
         try:
             print("Initializing Google Gemini model...")
@@ -93,32 +86,7 @@ def initialize_services():
         except Exception as e:
             print(f"FATAL: Could not initialize Gemini model: {e}")
             raise e
-
-    # Initialize Text-to-Speech
-    if tts_client is None:
-        try:
-            print("Initializing Google Cloud Text-to-Speech client...")
-            # Use the general Google Cloud credential
-            tts_client = texttospeech.TextToSpeechClient(credentials=cred_gcp)
-            print("Text-to-Speech client initialized.")
-        except Exception as e:
-            print(f"FATAL: Could not initialize TTS client: {e}")
-            raise e
             
-    # Initialize Gemini
-    if genai_model is None:
-        try:
-            print("Initializing Google Gemini model...")
-            gemini_api_key = os.environ.get('GEMINI_API_KEY')
-            if not gemini_api_key:
-                raise ValueError("GEMINI_API_KEY environment variable not set.")
-            genai.configure(api_key=gemini_api_key)
-            genai_model = genai.GenerativeModel('gemini-1.5-pro-latest')
-            print("Gemini model initialized.")
-        except Exception as e:
-            print(f"FATAL: Could not initialize Gemini model: {e}")
-            raise e
-        
 # --- Celery Configuration ---
 def make_celery(app):
     broker_url = os.environ.get('CELERY_BROKER_URL')
@@ -180,20 +148,12 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
     voice_map = {'Trystan': voice_names[0], 'Saylor': voice_names[1]}
     combined_audio = AudioSegment.empty()
     
-    print("---- STARTING AUDIO SYNTHESIS LOOP ----")
     for i, (speaker_name, dialogue) in enumerate(dialogue_parts):
         dialogue = dialogue.strip()
-        print(f"\n[PART {i+1}/{len(dialogue_parts)}] Speaker: {speaker_name}")
-        print(f"[PART {i+1}] Dialogue to synthesize: '{dialogue}'")
-
-        if not dialogue: 
-            print(f"[PART {i+1}] SKIPPING: Dialogue is empty.")
-            continue
+        if not dialogue: continue
 
         voice_name = voice_map.get(speaker_name)
-        if not voice_name: 
-            print(f"[PART {i+1}] SKIPPING: Could not find voice for speaker.")
-            continue
+        if not voice_name: continue
 
         phonetic_dialogue = dialogue.replace("Saylor", "sailor")
         synthesis_input = texttospeech.SynthesisInput(text=phonetic_dialogue)
@@ -208,19 +168,11 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
         
         response = tts_client.synthesize_speech(input=synthesis_input, voice=voice_params, audio_config=audio_config)
         
-        print(f"[PART {i+1}] TTS API returned audio content size: {len(response.audio_content)} bytes")
-
         if not response.audio_content:
-            print(f"[PART {i+1}] WARNING: TTS API returned empty audio. Skipping this part.")
             continue
             
         audio_chunk = AudioSegment.from_file(io.BytesIO(response.audio_content), format="mp3")
-        print(f"[PART {i+1}] Pydub created audio chunk of duration: {len(audio_chunk)} ms")
-
         combined_audio += audio_chunk + AudioSegment.silent(duration=600)
-    
-    print("\n---- FINISHED AUDIO SYNTHESIS LOOP ----")
-    print(f"Total combined audio duration before export: {len(combined_audio)} ms")
 
     if len(combined_audio) == 0:
         raise ValueError("Audio generation resulted in an empty file. All TTS requests may have failed.")
@@ -229,89 +181,40 @@ def generate_podcast_audio(script_text, output_filepath, voice_names):
     print(f"Audio content successfully written to file '{output_filepath}'")
     return True
 
-def _finalize_job(job_id, collection_name, local_audio_path, storage_path, generated_script=None, local_artwork_path=None):
-    """Finalizes a job by uploading files and updating Firestore."""
-    print(f"Finalizing job {job_id}...")
-    
-    # 1. Upload Audio File
-    audio_blob = bucket.blob(storage_path)
-    print(f"Uploading {local_audio_path} to {storage_path}...")
-    audio_blob.upload_from_filename(local_audio_path)
-    audio_blob.make_public()
-    audio_url = audio_blob.public_url
-    print(f"Audio upload complete. Public URL: {audio_url}")
-    os.remove(local_audio_path)
-    
-    # Prepare the data for the database update
-    update_data = {
-        'status': 'complete', 
-        'url': audio_url, 
-        'completed_at': firestore.SERVER_TIMESTAMP
-    }
-    if generated_script:
-        update_data['generated_script'] = generated_script
+# --- NEW, SIMPLER ARTWORK AND FINALIZE FUNCTIONS ---
 
-    # 2. Upload Artwork File (if it was created)
-    if local_artwork_path:
-        artwork_storage_path = f"podcasts/artwork/{os.path.basename(local_artwork_path)}"
-        artwork_blob = bucket.blob(artwork_storage_path)
-        print(f"Uploading {local_artwork_path} to {artwork_storage_path}...")
-        artwork_blob.upload_from_filename(local_artwork_path)
-        artwork_blob.make_public()
-        artwork_url = artwork_blob.public_url
-        print(f"Artwork upload complete. Public URL: {artwork_url}")
-        os.remove(local_artwork_path)
-        # Add the artwork URL to our database update
-        update_data['artwork_url'] = artwork_url
-
-    # 3. Update Firestore with all the new data
-    db.collection(collection_name).document(job_id).update(update_data)
-    print(f"Firestore document for job {job_id} updated to complete.")
-    return {"status": "Complete", "url": audio_url}
-
-def generate_artwork_for_topic(topic, job_id):
-    """Generates podcast cover art using an image model."""
-    print(f"Generating artwork for topic: {topic}")
+def generate_artwork_for_topic(topic):
+    """Generates podcast cover art using OpenAI's DALL-E 3 model."""
+    print(f"Generating artwork for topic '{topic}' using DALL-E 3...")
     try:
-        # This assumes you have the 'Vertex AI User' role on your service account
-        from google.cloud import aiplatform
-        # This line has been corrected
-        from google.cloud.aiplatform.gapic.preview import image_generation_service_client as igs_client
-
-        # Configure the image generation client
-        api_endpoint = "us-central1-aiplatform.googleapis.com"
-        client_options = {"api_endpoint": api_endpoint}
-        client = igs_client.ImageGenerationServiceClient(client_options=client_options)
-
-        prompt = (
-            f"Podcast cover art for a podcast about '{topic}'. "
-            f"Digital art, vibrant, modern, aesthetically pleasing, no text."
-        )
-
-        # Generate the image
-        response = client.generate_images(
-            parent=f"projects/{os.environ.get('GCP_PROJECT_ID')}/locations/us-central1",
-            prompt=prompt,
-            number_of_images=1
-        )
-
-        if not response.images:
-            raise Exception("Image generation returned no images.")
-
-        # Save the image to a temporary file
-        artwork_filepath = f"{job_id}_artwork.png"
-        image_bytes = response.images[0].image_bytes
-        with open(artwork_filepath, 'wb') as f:
-            f.write(image_bytes)
+        # The OpenAI client automatically uses the OPENAI_API_KEY environment variable
+        client = openai.OpenAI()
         
-        print(f"Artwork successfully written to file '{artwork_filepath}'")
-        return artwork_filepath
+        prompt = (
+            f"Digital art of a podcast cover for a show about '{topic}'. "
+            f"Vibrant, modern, aesthetically pleasing, no text."
+        )
+
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            n=1,
+            size="1024x1024",
+            quality="standard"
+        )
+        
+        artwork_url = response.data[0].url
+        if not artwork_url:
+            raise Exception("DALL-E 3 did not return an image URL.")
+            
+        print(f"Artwork generated successfully. URL: {artwork_url}")
+        return artwork_url
     except Exception as e:
-        print(f"WARNING: Artwork generation failed: {e}")
+        print(f"WARNING: DALL-E 3 artwork generation failed: {e}")
         return None
 
-def _finalize_job(job_id, collection_name, local_audio_path, storage_path, generated_script=None, local_artwork_path=None):
-    """Finalizes a job by uploading files and updating Firestore."""
+def _finalize_job(job_id, collection_name, local_audio_path, storage_path, generated_script=None, artwork_url=None):
+    """Finalizes a job by uploading the audio file and updating Firestore."""
     print(f"Finalizing job {job_id}...")
     
     # 1. Upload Audio File
@@ -323,7 +226,7 @@ def _finalize_job(job_id, collection_name, local_audio_path, storage_path, gener
     print(f"Audio upload complete. Public URL: {audio_url}")
     os.remove(local_audio_path)
     
-    # Prepare the data for the database update
+    # 2. Prepare the data for the database update
     update_data = {
         'status': 'complete', 
         'url': audio_url, 
@@ -331,21 +234,10 @@ def _finalize_job(job_id, collection_name, local_audio_path, storage_path, gener
     }
     if generated_script:
         update_data['generated_script'] = generated_script
+    if artwork_url:
+        update_data['artwork_url'] = artwork_url # Add the artwork URL if we have it
 
-    # 2. Upload Artwork File (if it was created)
-    if local_artwork_path:
-        artwork_storage_path = f"podcasts/artwork/{os.path.basename(local_artwork_path)}"
-        artwork_blob = bucket.blob(artwork_storage_path)
-        print(f"Uploading {local_artwork_path} to {artwork_storage_path}...")
-        artwork_blob.upload_from_filename(local_artwork_path)
-        artwork_blob.make_public()
-        artwork_url = artwork_blob.public_url
-        print(f"Artwork upload complete. Public URL: {artwork_url}")
-        os.remove(local_artwork_path)
-        # Add the artwork URL to our database update
-        update_data['artwork_url'] = artwork_url
-
-    # 3. Update Firestore with all the new data
+    # 3. Update Firestore
     db.collection(collection_name).document(job_id).update(update_data)
     print(f"Firestore document for job {job_id} updated to complete.")
     return {"status": "Complete", "url": audio_url}
@@ -356,44 +248,36 @@ def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
     print(f"WORKER: Started PODCAST job {job_id} for topic: {topic}")
     doc_ref = db.collection('podcasts').document(job_id)
     audio_filepath = f"{job_id}.mp3"
-    artwork_filepath = None # Initialize artwork path as None
 
     try:
         doc_ref.set({'topic': topic, 'context': context, 'source_type': 'idea', 'duration': duration, 'status': 'processing', 'created_at': firestore.SERVER_TIMESTAMP, 'voices': voices})
         
-        # --- CORRECTED LOGIC ---
         # 1. Generate the script
         original_script = generate_script_from_idea(topic, context, duration)
         
-        # 2. Generate the artwork (this is the new step)
-        artwork_filepath = generate_artwork_for_topic(topic, job_id) 
+        # 2. Generate the artwork URL
+        artwork_url = generate_artwork_for_topic(topic)
         
         # 3. Generate the audio
         if not generate_podcast_audio(original_script, audio_filepath, voices): 
             raise Exception("Audio generation failed.")
             
-        # 4. Finalize the job with both audio and artwork files
+        # 4. Finalize the job
         return _finalize_job(
             job_id, 
             'podcasts', 
             audio_filepath, 
             f"podcasts/{audio_filepath}", 
             generated_script=original_script, 
-            local_artwork_path=artwork_filepath
+            artwork_url=artwork_url
         )
     except Exception as e:
         print(f"ERROR in podcast task {job_id}: {e}")
         doc_ref.update({'status': 'failed', 'error_message': str(e)})
-        # Clean up both temporary files on failure
         if os.path.exists(audio_filepath): os.remove(audio_filepath)
-        if artwork_filepath and os.path.exists(artwork_filepath): os.remove(artwork_filepath)
         return {"status": "Failed", "error": str(e)}
 
 # --- API Endpoints ---
-@app.before_request
-def before_first_request_func():
-    initialize_services()
-
 @app.route("/")
 def index():
     return jsonify({"message": "Welcome to the Sonify API! The server is running."})
@@ -421,4 +305,3 @@ def get_podcast_status(job_id):
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
