@@ -312,5 +312,9 @@ def debug_env():
     env_vars = {key: value for key, value in os.environ.items()}
     return jsonify(env_vars)
 
+@app.route("/test")
+def test_route():
+    return "The new code is live!"
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
