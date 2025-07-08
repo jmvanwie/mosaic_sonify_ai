@@ -266,9 +266,21 @@
             const item = document.createElement('div');
             item.className = 'bg-gray-700/50 p-4 rounded-lg flex items-center gap-4 transition-all duration-300 transform scale-95 opacity-0';
             
-            const artwork = document.createElement('div');
-            artwork.className = 'w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-md flex-shrink-0 flex items-center justify-center shadow-lg';
-            artwork.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>`;
+            // --- START OF CHANGES ---
+
+            const artworkContainer = document.createElement('div');
+            artworkContainer.className = 'w-16 h-16 bg-gray-800 rounded-md flex-shrink-0 flex items-center justify-center shadow-lg';
+
+            // Check if artwork_url exists in the data from the backend
+            if (data.artwork_url) {
+                // If it exists, create an image element
+                artworkContainer.innerHTML = `<img src="${data.artwork_url}" alt="Podcast artwork for ${data.topic}" class="w-full h-full object-cover rounded-md">`;
+            } else {
+                // If not, use the default SVG icon
+                artworkContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>`;
+            }
+
+            // --- END OF CHANGES ---
 
             const details = document.createElement('div');
             details.className = 'flex-grow min-w-0';
@@ -279,23 +291,22 @@
 
             const audio = document.createElement('audio');
             audio.controls = true;
-            // ---- ⬇️ CRITICAL FIX IS HERE ⬇️ ----
-            audio.src = data.url; 
-            // ---- ⬆️ CRITICAL FIX IS HERE ⬆️ ----
+            audio.src = data.url; // Use 'url' which is the correct key for the podcast audio
             audio.className = 'w-full mt-2';
 
             details.appendChild(title);
             details.appendChild(audio);
-            item.appendChild(artwork);
+            
+            // Use the new artworkContainer
+            item.appendChild(artworkContainer); 
             item.appendChild(details);
             
             repositoryList.prepend(item);
             
-            // Add a subtle animation on entry
             setTimeout(() => {
                 item.classList.remove('scale-95', 'opacity-0');
             }, 50);
-        }
+    }
 
         function showStatus(message, type = 'loading') {
             statusDiv.style.display = 'block';
