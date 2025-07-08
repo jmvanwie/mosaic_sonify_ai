@@ -12,6 +12,7 @@ from firebase_admin import credentials, firestore, storage
 from pydub import AudioSegment
 from google.cloud import texttospeech
 import google.generativeai as genai
+from google.oauth2 import service_account
 
 # --- App & CORS Configuration ---
 app = Flask(__name__)
@@ -41,12 +42,15 @@ def initialize_services():
     """Initializes all external services using a secret file."""
     global db, bucket, tts_client, genai_model
 
-    # Initialize credentials once from the secret file
+    # Create two different credential objects from the same file
     try:
         print(f"Loading credentials from secret file: {CREDENTIALS_PATH}")
-        cred = credentials.Certificate(CREDENTIALS_PATH)
+        # Credential for Firebase Admin SDK
+        cred_firebase = credentials.Certificate(CREDENTIALS_PATH)
+        # Credential for other Google Cloud services (like TTS)
+        cred_gcp = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
     except Exception as e:
-        print(f"FATAL: Could not load credentials from {CREDENTIALS_PATH}. Ensure the secret file is configured in Render. Error: {e}")
+        print(f"FATAL: Could not load credentials from {CREDENTIALS_PATH}. Error: {e}")
         raise e
 
     # Initialize Firebase
@@ -54,12 +58,12 @@ def initialize_services():
         try:
             print("Initializing Firebase...")
             project_id = os.environ.get('GCP_PROJECT_ID')
-            firebase_admin.initialize_app(cred, {
+            firebase_admin.initialize_app(cred_firebase, { # Use the Firebase credential
                 'projectId': project_id,
                 'storageBucket': os.environ.get('FIREBASE_STORAGE_BUCKET')
             })
             db = firestore.client()
-            bucket = storage.bucket() # Bucket is now available via the default app
+            bucket = storage.bucket()
             print("Successfully connected to Firebase.")
         except Exception as e:
             print(f"FATAL: Could not connect to Firebase: {e}")
@@ -69,7 +73,8 @@ def initialize_services():
     if tts_client is None:
         try:
             print("Initializing Google Cloud Text-to-Speech client...")
-            tts_client = texttospeech.TextToSpeechClient(credentials=cred)
+            # Use the general Google Cloud credential
+            tts_client = texttospeech.TextToSpeechClient(credentials=cred_gcp)
             print("Text-to-Speech client initialized.")
         except Exception as e:
             print(f"FATAL: Could not initialize TTS client: {e}")
