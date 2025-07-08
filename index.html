@@ -124,8 +124,8 @@
     </div>
     
     <script>
-        // Correct API URL pointing to your live Render server
-        const RENDER_API_URL = "https://mosaicdgitial-sonify-191c.onrender.com"; 
+    // Correct API URL pointing to your live Render server
+        const RENDER_API_URL = "https://mosaic-deploy-ws.onrender.com"; 
 
         const generateBtn = document.getElementById('generate-btn');
         const statusDiv = document.getElementById('status');
@@ -279,7 +279,9 @@
 
             const audio = document.createElement('audio');
             audio.controls = true;
-            audio.src = data.podcast_url;
+            // ---- ⬇️ CRITICAL FIX IS HERE ⬇️ ----
+            audio.src = data.url; 
+            // ---- ⬆️ CRITICAL FIX IS HERE ⬆️ ----
             audio.className = 'w-full mt-2';
 
             details.appendChild(title);
@@ -319,7 +321,7 @@
             generateBtn.disabled = false;
             generateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>Generate Podcast`;
         }
-    </script>
+</script>
 </body>
 </html>
 
