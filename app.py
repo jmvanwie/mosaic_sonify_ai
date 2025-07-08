@@ -356,7 +356,7 @@ def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
     print(f"WORKER: Started PODCAST job {job_id} for topic: {topic}")
     doc_ref = db.collection('podcasts').document(job_id)
     audio_filepath = f"{job_id}.mp3"
-    artwork_filepath = None # Initialize artwork path as None
+    #artwork_filepath = None # Initialize artwork path as None
 
     try:
         doc_ref.set({'topic': topic, 'context': context, 'source_type': 'idea', 'duration': duration, 'status': 'processing', 'created_at': firestore.SERVER_TIMESTAMP, 'voices': voices})
@@ -366,7 +366,7 @@ def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
         original_script = generate_script_from_idea(topic, context, duration)
         
         # 2. Generate the artwork (this is the new step)
-        artwork_filepath = generate_artwork_for_topic(topic, job_id) 
+        #artwork_filepath = generate_artwork_for_topic(topic, job_id) 
         
         # 3. Generate the audio
         if not generate_podcast_audio(original_script, audio_filepath, voices): 
@@ -379,14 +379,14 @@ def generate_podcast_from_idea_task(job_id, topic, context, duration, voices):
             audio_filepath, 
             f"podcasts/{audio_filepath}", 
             generated_script=original_script, 
-            local_artwork_path=artwork_filepath
+            #local_artwork_path=artwork_filepath
         )
     except Exception as e:
         print(f"ERROR in podcast task {job_id}: {e}")
         doc_ref.update({'status': 'failed', 'error_message': str(e)})
         # Clean up both temporary files on failure
         if os.path.exists(audio_filepath): os.remove(audio_filepath)
-        if artwork_filepath and os.path.exists(artwork_filepath): os.remove(artwork_filepath)
+        #if artwork_filepath and os.path.exists(artwork_filepath): os.remove(artwork_filepath)
         return {"status": "Failed", "error": str(e)}
 
 # --- API Endpoints ---
