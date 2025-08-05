@@ -88,6 +88,7 @@ origins = [
     "https://coruscating-hotteok-a5fb56.netlify.app",
     "https://www.mosaicdigital.ai",
     "http://localhost:8000",
+    "http://localhost:3000",
     "http://127.0.0.1:5500",
     re.compile(r"https://.*\.netlify\.app"), # Allow all netlify subdomains
 ]
