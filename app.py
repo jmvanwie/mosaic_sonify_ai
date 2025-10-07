@@ -1,4 +1,4 @@
-# app.py - Sonify Podcast Generator (Final Version)
+﻿# app.py - Sonify Podcast Generator (Final Version)
 
 import os
 import uuid
@@ -72,7 +72,8 @@ def initialize_services():
             if not gemini_api_key:
                 raise ValueError("GEMINI_API_KEY environment variable not set.")
             genai.configure(api_key=gemini_api_key)
-            genai_model = genai.GenerativeModel('gemini-1.5-pro-latest')
+            # 💡 FIX: Update the model name to the latest version
+            genai_model = genai.GenerativeModel('gemini-1.5-pro-preview-0514') 
             print("Gemini model initialized.")
         except Exception as e:
             print(f"FATAL: Could not initialize Gemini model: {e}")
